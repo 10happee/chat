@@ -27,13 +27,13 @@
       margin: 5px 0;
       white-space: pre-wrap;
       word-wrap: break-word;
+      position: relative;
+      padding-right: 60px; /* Reserve space for the copy button */
     }
 
     #chat-box p:hover {
       background-color: rgba(255, 255, 255, 0.05);
-      transition: background-color 0.2s ease;
       border-radius: 4px;
-      padding: 2px 4px;
     }
 
     #chat-form {
@@ -85,11 +85,15 @@
       top: 50%;
       right: 10px;
       transform: translateY(-50%);
-      background-color: rgba(0, 0, 0, 0.5);
+      background-color: rgba(0, 0, 0, 0.6);
       color: white;
       padding: 5px 10px;
       border-radius: 4px;
       cursor: pointer;
+    }
+
+    #chat-box p:hover .copy-button {
+      display: block;
     }
 
     #username-form {
@@ -109,24 +113,20 @@
   <button onclick="startChat()">Start Chat</button>
 </div>
 
-<!-- Chat box -->
 <div id="chat-box" style="display: none;"></div>
 
-<!-- Chat input form -->
 <form id="chat-form">
   <textarea id="message-input" placeholder="Type your message..." rows="1"></textarea>
   <button type="button" onclick="sendMessage()">Send</button>
 </form>
 
-<!-- Volume Slider -->
 <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" title="Ping Volume" />
 
-<!-- Sound -->
 <audio id="ping-sound" src="ping.mp3" preload="auto"></audio>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-  import { getDatabase, ref, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+  import { getDatabase, ref, set, onValue, remove, get, push } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDTQvxP6ERHw5e00BIFsEPy1R80Ma_6qfM",
@@ -156,6 +156,8 @@
     document.getElementById("chat-box").style.display = "block";
     document.getElementById("chat-form").style.display = "flex";
 
+    sendSystemMessage(`${username} joined.`);
+
     listenForMessages();
     cleanOldMessages();
 
@@ -168,6 +170,15 @@
     });
   }
 
+  function sendSystemMessage(text) {
+    const timestamp = Date.now();
+    set(ref(db, "messages/" + timestamp), {
+      text,
+      timestamp,
+      isSystem: true
+    });
+  }
+
   window.startChat = startChat;
 
   window.sendMessage = () => {
@@ -175,8 +186,7 @@
     const text = input.value.trim();
     if (text !== "") {
       const timestamp = Date.now();
-      const messageRef = ref(db, "messages/" + timestamp);
-      set(messageRef, {
+      set(ref(db, "messages/" + timestamp), {
         text,
         timestamp,
         username
@@ -198,7 +208,6 @@
           const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           const msgText = msg.text.replace(/(https:\/\/\S+)/g, '<a href="$1" target="_blank">$1</a>');
 
-          // System message for when a user joins
           if (msg.isSystem) {
             p.innerHTML = `${msg.text}`;
             p.style.fontStyle = "italic";
@@ -207,24 +216,25 @@
             p.innerHTML = `[${time}] <strong>${msg.username || "Unknown"}</strong>: ${msgText}`;
           }
 
-          chatBox.appendChild(p);
+          // Copy Button
+          if (!msg.isSystem) {
+            const copyButton = document.createElement("button");
+            copyButton.className = "copy-button";
+            copyButton.textContent = "Copy";
+            copyButton.onclick = () => {
+              navigator.clipboard.writeText(msg.text).then(() => {
+                copyButton.textContent = "Copied!";
+                setTimeout(() => {
+                  copyButton.textContent = "Copy";
+                }, 2000);
+              });
+            };
+            p.appendChild(copyButton);
+          }
 
-          // Add copy button
-          const copyButton = document.createElement("button");
-          copyButton.className = "copy-button";
-          copyButton.textContent = "Copy";
-          copyButton.onclick = () => {
-            navigator.clipboard.writeText(msg.text).then(() => {
-              copyButton.textContent = "Copied!";
-              setTimeout(() => {
-                copyButton.textContent = "Copy";
-              }, 2000);
-            });
-          };
-          p.appendChild(copyButton);
+          chatBox.appendChild(p);
         });
 
-        // Add spacer to prevent overlap
         const spacer = document.createElement("div");
         spacer.style.height = "60px";
         chatBox.appendChild(spacer);
@@ -233,8 +243,7 @@
 
         if (lastMessageKey && latestKey !== lastMessageKey) {
           const sound = document.getElementById("ping-sound");
-          const volume = parseFloat(document.getElementById("volume-slider").value);
-          sound.volume = volume;
+          sound.volume = parseFloat(document.getElementById("volume-slider").value);
           sound.play();
         }
         lastMessageKey = latestKey;
