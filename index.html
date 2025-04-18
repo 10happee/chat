@@ -27,17 +27,17 @@
       margin: 5px 0;
       white-space: pre-wrap;
       word-wrap: break-word;
-      position: relative;
-      padding-right: 40px;
     }
 
     #chat-box p:hover {
       background-color: rgba(255, 255, 255, 0.05);
       transition: background-color 0.2s ease;
       border-radius: 4px;
+      padding: 2px 4px;
     }
 
     #chat-form {
+      display: none;
       position: fixed;
       bottom: 0;
       left: 0;
@@ -45,7 +45,7 @@
       background: rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(8px);
       padding: 10px;
-      display: none;
+      display: flex;
       gap: 10px;
       box-sizing: border-box;
     }
@@ -79,48 +79,34 @@
       text-decoration: underline;
     }
 
-    .copy-btn {
-      background: transparent;
-      color: #aaa;
-      border: none;
-      cursor: pointer;
-      font-size: 0.8rem;
-      position: absolute;
-      right: 10px;
-      top: 0;
+    .copy-button {
       display: none;
-    }
-
-    p:hover .copy-btn {
-      display: inline-block;
-    }
-
-    .copy-btn:hover {
+      position: absolute;
+      top: 50%;
+      right: 10px;
+      transform: translateY(-50%);
+      background-color: rgba(0, 0, 0, 0.5);
       color: white;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
     }
 
-    .embed iframe {
-      width: 100%;
-      max-width: 400px;
-      height: 225px;
-      border: none;
-      margin-top: 5px;
-      border-radius: 8px;
-    }
-
-    .embed img {
-      max-width: 100%;
-      margin-top: 5px;
-      border-radius: 8px;
+    #username-form {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
     }
   </style>
 </head>
 <body>
 
-<div id="username-form" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #111; z-index: 1000;">
-  <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Enter your username to start chatting</h2>
-  <input type="text" id="username-input" placeholder="Your username" style="font-size: 1.2rem; padding: 10px 20px; width: 300px; max-width: 80%; border-radius: 8px; border: none; box-shadow: 0 0 10px rgba(0,0,0,0.1);" />
-  <button onclick="startChat()" style="margin-top: 1rem;">Start Chat</button>
+<div id="username-form">
+  <h2>Enter your username to start chatting</h2>
+  <input type="text" id="username-input" placeholder="Your username" />
+  <button onclick="startChat()">Start Chat</button>
 </div>
 
 <!-- Chat box -->
@@ -140,23 +126,17 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-  import {
-    getDatabase,
-    ref,
-    set,
-    onValue,
-    remove,
-    get
-  } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+  import { getDatabase, ref, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDTQvxP6ERHw5e00BIFsEPy1R80Ma_6qfM",
     authDomain: "happeechat.firebaseapp.com",
     databaseURL: "https://happeechat-default-rtdb.firebaseio.com",
     projectId: "happeechat",
-    storageBucket: "happeechat.appspot.com",
+    storageBucket: "happeechat.firebasestorage.app",
     messagingSenderId: "851920750529",
-    appId: "1:851920750529:web:8e15bf1c0b685aa2c41140"
+    appId: "1:851920750529:web:8e15bf1c0b685aa2c41140",
+    measurementId: "G-JTMNJS18XP"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -164,35 +144,17 @@
   let username = "";
   let lastMessageKey = null;
 
-  const blacklist = ["badword", "example"]; // Add more blacklisted words here
-
   const chatBox = document.getElementById("chat-box");
   const messagesRef = ref(db, "messages");
 
-  function censor(text) {
-    return blacklist.reduce((str, word) => {
-      const stars = "*".repeat(word.length);
-      const regex = new RegExp(word, "gi");
-      return str.replace(regex, stars);
-    }, text);
-  }
-
   function startChat() {
     const input = document.getElementById("username-input");
-    username = censor(input.value.trim()) || "Anonymous";
+    username = input.value.trim() || "Anonymous";
     if (!username) return;
 
     document.getElementById("username-form").style.display = "none";
     document.getElementById("chat-box").style.display = "block";
     document.getElementById("chat-form").style.display = "flex";
-const timestamp = Date.now();
-const joinMessageRef = ref(db, "messages/" + timestamp);
-set(joinMessageRef, {
-  text: `${username} joined.`,
-  timestamp,
-  username: "", // empty username for join messages
-  isSystem: true
-});
 
     listenForMessages();
     cleanOldMessages();
@@ -210,7 +172,7 @@ set(joinMessageRef, {
 
   window.sendMessage = () => {
     const input = document.getElementById("message-input");
-    const text = censor(input.value.trim());
+    const text = input.value.trim();
     if (text !== "") {
       const timestamp = Date.now();
       const messageRef = ref(db, "messages/" + timestamp);
@@ -234,33 +196,40 @@ set(joinMessageRef, {
           const msg = messages[key];
           const p = document.createElement("p");
           const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const msgText = msg.text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
-          p.innerHTML = `[${time}] <strong>${censor(msg.username || "Unknown")}</strong>: ${msgText}`;
+          const msgText = msg.text.replace(/(https:\/\/\S+)/g, '<a href="$1" target="_blank">$1</a>');
 
-          const copyBtn = document.createElement("button");
-          copyBtn.innerText = "Copy";
-          copyBtn.className = "copy-btn";
-          copyBtn.onclick = () => {
-            navigator.clipboard.writeText(`${censor(msg.username)}: ${msg.text}`).then(() => {
-              copyBtn.innerText = "Copied!";
-              setTimeout(() => copyBtn.innerText = "Copy", 1500);
-            });
-          };
-
-          p.appendChild(copyBtn);
-
-          const embed = createEmbedElements(msg.text);
-          p.appendChild(embed);
+          // System message for when a user joins
+          if (msg.isSystem) {
+            p.innerHTML = `${msg.text}`;
+            p.style.fontStyle = "italic";
+            p.style.color = "#888";
+          } else {
+            p.innerHTML = `[${time}] <strong>${msg.username || "Unknown"}</strong>: ${msgText}`;
+          }
 
           chatBox.appendChild(p);
+
+          // Add copy button
+          const copyButton = document.createElement("button");
+          copyButton.className = "copy-button";
+          copyButton.textContent = "Copy";
+          copyButton.onclick = () => {
+            navigator.clipboard.writeText(msg.text).then(() => {
+              copyButton.textContent = "Copied!";
+              setTimeout(() => {
+                copyButton.textContent = "Copy";
+              }, 2000);
+            });
+          };
+          p.appendChild(copyButton);
         });
 
+        // Add spacer to prevent overlap
         const spacer = document.createElement("div");
         spacer.style.height = "60px";
         chatBox.appendChild(spacer);
 
-        const shouldScroll = chatBox.scrollTop + chatBox.clientHeight >= chatBox.scrollHeight - 200;
-        chatBox.scrollTop = shouldScroll ? chatBox.scrollHeight : chatBox.scrollTop;
+        chatBox.scrollTop = chatBox.scrollHeight;
 
         if (lastMessageKey && latestKey !== lastMessageKey) {
           const sound = document.getElementById("ping-sound");
@@ -271,35 +240,6 @@ set(joinMessageRef, {
         lastMessageKey = latestKey;
       }
     });
-  }
-
-  function createEmbedElements(msgText) {
-    const embedContainer = document.createElement("div");
-    embedContainer.className = "embed";
-
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    const urls = msgText.match(urlRegex);
-
-    if (urls) {
-      urls.forEach(url => {
-        const ytMatch = url.match(/(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([\w-]+)/);
-        if (ytMatch) {
-          const iframe = document.createElement("iframe");
-          iframe.src = `https://www.youtube.com/embed/${ytMatch[1]}`;
-          iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-          iframe.allowFullscreen = true;
-          embedContainer.appendChild(iframe);
-          return;
-        }
-
-        const img = document.createElement("img");
-        img.src = url;
-        img.onload = () => embedContainer.appendChild(img);
-        img.onerror = () => {};
-      });
-    }
-
-    return embedContainer;
   }
 
   function cleanOldMessages() {
