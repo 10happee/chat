@@ -27,13 +27,12 @@
       margin: 5px 0;
       white-space: pre-wrap;
       word-wrap: break-word;
-      transition: background-color 0.2s ease;
-      border-radius: 4px;
-      padding: 2px 4px;
     }
 
     #chat-box p:hover {
       background-color: rgba(255, 255, 255, 0.05);
+      transition: background-color 0.2s ease;
+      border-radius: 4px;
     }
 
     #chat-form {
@@ -78,28 +77,38 @@
       text-decoration: underline;
     }
 
-    .embed {
-      margin-top: 4px;
-      max-width: 100%;
+    .copy-btn {
+      background: transparent;
+      color: #aaa;
+      border: none;
+      cursor: pointer;
+      font-size: 0.8rem;
+      margin-left: 10px;
     }
 
-    .embed img {
-      max-width: 100%;
-      border-radius: 6px;
+    .copy-btn:hover {
+      color: white;
     }
 
     .embed iframe {
       width: 100%;
-      max-width: 560px;
-      height: 315px;
+      max-width: 400px;
+      height: 225px;
       border: none;
-      border-radius: 6px;
+      margin-top: 5px;
+      border-radius: 8px;
+    }
+
+    .embed img {
+      max-width: 100%;
+      margin-top: 5px;
+      border-radius: 8px;
     }
   </style>
 </head>
 <body>
 
-<div id="username-form" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;">
+<div id="username-form" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background-color: #111; z-index: 1000;">
   <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Enter your username to start chatting</h2>
   <input type="text" id="username-input" placeholder="Your username" style="font-size: 1.2rem; padding: 10px 20px; width: 300px; max-width: 80%; border-radius: 8px; border: none; box-shadow: 0 0 10px rgba(0,0,0,0.1);" />
   <button onclick="startChat()" style="margin-top: 1rem;">Start Chat</button>
@@ -138,8 +147,7 @@
     projectId: "happeechat",
     storageBucket: "happeechat.appspot.com",
     messagingSenderId: "851920750529",
-    appId: "1:851920750529:web:8e15bf1c0b685aa2c41140",
-    measurementId: "G-JTMNJS18XP"
+    appId: "1:851920750529:web:8e15bf1c0b685aa2c41140"
   };
 
   const app = initializeApp(firebaseConfig);
@@ -147,21 +155,22 @@
   let username = "";
   let lastMessageKey = null;
 
+  const blacklist = ["badword", "example"]; // Add more blacklisted words here
+
   const chatBox = document.getElementById("chat-box");
   const messagesRef = ref(db, "messages");
 
-  const blacklist = ["badword1", "badword2", "poop", "fart", "heck"]; // Add more as needed
-
   function censor(text) {
-    return text.split(" ").map(word => {
-      const lower = word.toLowerCase();
-      return blacklist.some(b => lower.includes(b)) ? "*".repeat(word.length) : word;
-    }).join(" ");
+    return blacklist.reduce((str, word) => {
+      const stars = "*".repeat(word.length);
+      const regex = new RegExp(word, "gi");
+      return str.replace(regex, stars);
+    }, text);
   }
 
   function startChat() {
     const input = document.getElementById("username-input");
-    username = censor(input.value.trim() || "Anonymous");
+    username = censor(input.value.trim()) || "Anonymous";
     if (!username) return;
 
     document.getElementById("username-form").style.display = "none";
@@ -197,31 +206,6 @@
     }
   };
 
-  function createEmbedElements(msgText) {
-    const embedContainer = document.createElement("div");
-    embedContainer.className = "embed";
-
-    // Image/GIF embeds
-    const imgMatch = msgText.match(/(https?:\/\/\S+\.(?:png|jpg|jpeg|gif))/i);
-    if (imgMatch) {
-      const img = document.createElement("img");
-      img.src = imgMatch[1];
-      embedContainer.appendChild(img);
-    }
-
-    // YouTube embed
-    const ytMatch = msgText.match(/(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([\w-]+)/);
-    if (ytMatch) {
-      const iframe = document.createElement("iframe");
-      iframe.src = `https://www.youtube.com/embed/${ytMatch[1]}`;
-      iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
-      iframe.allowFullscreen = true;
-      embedContainer.appendChild(iframe);
-    }
-
-    return embedContainer;
-  }
-
   function listenForMessages() {
     onValue(messagesRef, (snapshot) => {
       const messages = snapshot.val();
@@ -231,26 +215,35 @@
         const latestKey = keys[keys.length - 1];
         keys.forEach((key) => {
           const msg = messages[key];
-          const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const msgText = msg.text.replace(/(https:\/\/\S+)/g, '<a href="$1" target="_blank">$1</a>');
-
           const p = document.createElement("p");
-          p.innerHTML = `[${time}] <strong>${msg.username}</strong>: ${msgText}`;
-          chatBox.appendChild(p);
+          const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          const msgText = msg.text.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank">$1</a>');
+          p.innerHTML = `[${time}] <strong>${censor(msg.username || "Unknown")}</strong>: ${msgText}`;
 
-          // Embeds
+          const copyBtn = document.createElement("button");
+          copyBtn.innerText = "Copy";
+          copyBtn.className = "copy-btn";
+          copyBtn.onclick = () => {
+            navigator.clipboard.writeText(`${censor(msg.username)}: ${msg.text}`).then(() => {
+              copyBtn.innerText = "Copied!";
+              setTimeout(() => copyBtn.innerText = "Copy", 1500);
+            });
+          };
+
+          p.appendChild(copyBtn);
+
           const embed = createEmbedElements(msg.text);
-          if (embed.childNodes.length > 0) {
-            chatBox.appendChild(embed);
-          }
+          p.appendChild(embed);
+
+          chatBox.appendChild(p);
         });
 
-        // Spacer to prevent overlap
         const spacer = document.createElement("div");
         spacer.style.height = "60px";
         chatBox.appendChild(spacer);
 
-        chatBox.scrollTop = chatBox.scrollHeight;
+        const shouldScroll = chatBox.scrollTop + chatBox.clientHeight >= chatBox.scrollHeight - 200;
+        chatBox.scrollTop = shouldScroll ? chatBox.scrollHeight : chatBox.scrollTop;
 
         if (lastMessageKey && latestKey !== lastMessageKey) {
           const sound = document.getElementById("ping-sound");
@@ -263,14 +256,45 @@
     });
   }
 
+  function createEmbedElements(msgText) {
+    const embedContainer = document.createElement("div");
+    embedContainer.className = "embed";
+
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const urls = msgText.match(urlRegex);
+
+    if (urls) {
+      urls.forEach(url => {
+        const ytMatch = url.match(/(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([\w-]+)/);
+        if (ytMatch) {
+          const iframe = document.createElement("iframe");
+          iframe.src = `https://www.youtube.com/embed/${ytMatch[1]}`;
+          iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+          iframe.allowFullscreen = true;
+          embedContainer.appendChild(iframe);
+          return;
+        }
+
+        const img = document.createElement("img");
+        img.src = url;
+        img.onload = () => embedContainer.appendChild(img);
+        img.onerror = () => {};
+      });
+    }
+
+    return embedContainer;
+  }
+
   function cleanOldMessages() {
     get(messagesRef).then((snapshot) => {
       const messages = snapshot.val();
       if (!messages) return;
 
       const now = Date.now();
-      const keys = Object.keys(messages).sort((a, b) => parseInt(a) - parseInt(b));
+      const keys = Object.keys(messages);
       const keysToDelete = [];
+
+      keys.sort((a, b) => parseInt(a) - parseInt(b));
 
       for (let i = 0; i < keys.length; i++) {
         const msg = messages[keys[i]];
