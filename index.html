@@ -5,13 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Happee Chat</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet" />
- <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Happee Chat</title>
-  <link href="https://fonts.googleapis.com/css2?family=Poppins&display=swap" rel="stylesheet" />
   <style>
     body {
       font-family: 'Poppins', sans-serif;
@@ -34,35 +27,30 @@
       margin: 5px 0;
       white-space: pre-wrap;
       word-wrap: break-word;
-      position: relative;
+      transition: background-color 0.2s ease;
+      border-radius: 4px;
+      padding: 2px 4px;
     }
 
     #chat-box p:hover {
       background-color: rgba(255, 255, 255, 0.05);
-      transition: background-color 0.2s ease;
-      border-radius: 4px;
     }
 
     .copy-btn {
       display: none;
-      position: absolute;
-      right: 5px;
-      top: 5px;
-      background-color: #444;
-      color: white;
+      margin-left: 10px;
+      background: none;
       border: none;
-      padding: 2px 8px;
-      font-size: 0.8rem;
+      color: #90cdf4;
       cursor: pointer;
-      border-radius: 4px;
+      font-size: 0.9em;
     }
 
-    #chat-box p:hover .copy-btn {
+    p:hover .copy-btn {
       display: inline;
     }
 
     #chat-form {
-      display: none;
       position: fixed;
       bottom: 0;
       left: 0;
@@ -70,7 +58,7 @@
       background: rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(8px);
       padding: 10px;
-      display: flex;
+      display: none;
       gap: 10px;
       box-sizing: border-box;
     }
@@ -111,22 +99,20 @@
     }
 
     iframe {
-      width: 360px;
-      height: 200px;
-      border-radius: 6px;
+      max-width: 100%;
+      width: 400px;
+      height: 225px;
+      border: none;
       margin-top: 5px;
     }
 
     img {
       max-width: 100%;
-      border-radius: 6px;
+      height: auto;
       margin-top: 5px;
+      border-radius: 8px;
     }
   </style>
-</head>
-<body>
-  <!-- Everything else remains unchanged, including Firebase setup, HTML body, scripts -->
-
 </head>
 <body>
 
@@ -136,16 +122,22 @@
   <button onclick="startChat()" style="margin-top: 1rem;">Start Chat</button>
 </div>
 
+<!-- Chat box -->
 <div id="chat-box" style="display: none;"></div>
 
+<!-- Chat input form -->
 <form id="chat-form">
   <textarea id="message-input" placeholder="Type your message..." rows="1"></textarea>
   <button type="button" onclick="sendMessage()">Send</button>
 </form>
 
+<!-- Volume Slider -->
 <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" title="Ping Volume" />
+
+<!-- Clear Button -->
 <button id="clear-btn" onclick="clearMessages()">Clear</button>
 
+<!-- Sound -->
 <audio id="ping-sound" src="ping.mp3" preload="auto"></audio>
 
 <script type="module">
@@ -156,7 +148,8 @@
     set,
     onValue,
     remove,
-    get
+    get,
+    push
   } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
   const firebaseConfig = {
@@ -164,7 +157,7 @@
     authDomain: "happeechat.firebaseapp.com",
     databaseURL: "https://happeechat-default-rtdb.firebaseio.com",
     projectId: "happeechat",
-    storageBucket: "happeechat.firebasestorage.app",
+    storageBucket: "happeechat.appspot.com",
     messagingSenderId: "851920750529",
     appId: "1:851920750529:web:8e15bf1c0b685aa2c41140",
     measurementId: "G-JTMNJS18XP"
@@ -172,15 +165,24 @@
 
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
+  const messagesRef = ref(db, "messages");
+
   let username = "";
   let lastMessageKey = null;
 
-  const chatBox = document.getElementById("chat-box");
-  const messagesRef = ref(db, "messages");
+  const blacklistedWords = ["badword", "anotherbadword"];
+
+  function censor(text) {
+    for (let word of blacklistedWords) {
+      const pattern = new RegExp(`\\b${word}\\b`, "gi");
+      text = text.replace(pattern, "*".repeat(word.length));
+    }
+    return text;
+  }
 
   function startChat() {
     const input = document.getElementById("username-input");
-    username = input.value.trim() || "Anonymous";
+    username = censor(input.value.trim()) || "Anonymous";
     if (!username) return;
 
     document.getElementById("username-form").style.display = "none";
@@ -190,12 +192,7 @@
     listenForMessages();
     cleanOldMessages();
 
-    const joinRef = ref(db, "messages/" + Date.now());
-    set(joinRef, {
-      text: `${username} joined.`,
-      timestamp: Date.now(),
-      system: true
-    });
+    sendServerMessage(`${username} joined.`);
 
     const messageInput = document.getElementById("message-input");
     messageInput.addEventListener("keydown", (e) => {
@@ -210,39 +207,32 @@
 
   window.sendMessage = () => {
     const input = document.getElementById("message-input");
-    const text = input.value.trim();
+    let text = input.value.trim();
     if (text !== "") {
       const timestamp = Date.now();
       const messageRef = ref(db, "messages/" + timestamp);
+      text = censor(text);
       set(messageRef, {
         text,
         timestamp,
-        username
+        username: censor(username)
       });
       input.value = "";
     }
   };
 
-  window.clearMessages = () => {
-    remove(messagesRef);
-  };
-
-  function embedMedia(text) {
-    const safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const linkedText = safeText.replace(/(https:\/\/\S+)/g, (url) => {
-      if (url.match(/\.(jpeg|jpg|gif|png|webp|bmp)$/i) || url.includes("googleusercontent.com")) {
-        return `<a href="${url}" target="_blank">${url}</a><br><img src="${url}" alt="image" loading="lazy" />`;
-      } else if (url.includes("youtube.com/watch") || url.includes("youtu.be/")) {
-        let videoId = url.split("v=")[1] || url.split("/").pop();
-        if (videoId.includes("&")) videoId = videoId.split("&")[0];
-        return `<a href="${url}" target="_blank">${url}</a><br><iframe width="100%" height="200" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
-      }
-      return `<a href="${url}" target="_blank">${url}</a>`;
+  function sendServerMessage(message) {
+    const timestamp = Date.now();
+    const messageRef = ref(db, "messages/" + timestamp);
+    set(messageRef, {
+      text: message,
+      timestamp,
+      isServer: true
     });
-    return linkedText;
   }
 
   function listenForMessages() {
+    const chatBox = document.getElementById("chat-box");
     onValue(messagesRef, (snapshot) => {
       const messages = snapshot.val();
       chatBox.innerHTML = "";
@@ -254,24 +244,27 @@
           const p = document.createElement("p");
           const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-          const content = msg.system
-            ? `[${time}] ${msg.text}`
-            : `[${time}] ${msg.username || "Unknown"}: ${embedMedia(msg.text)}`;
+          let msgText = msg.text;
 
-          p.innerHTML = content;
-
-          if (!msg.system) {
-            const copyBtn = document.createElement("button");
-            copyBtn.className = "copy-btn";
-            copyBtn.textContent = "Copy";
-            copyBtn.onclick = () => {
-              navigator.clipboard.writeText(`${msg.username || "Unknown"}: ${msg.text}`);
-              copyBtn.textContent = "Copied!";
-              setTimeout(() => (copyBtn.textContent = "Copy"), 2000);
-            };
-            p.appendChild(copyBtn);
+          if (!msg.isServer) {
+            msgText = msgText.replace(/(https:\/\/\S+\.(jpg|jpeg|png|gif|webp))/gi, '<img src="$1" />');
+            msgText = msgText.replace(/(https:\/\/www\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]+))/g, '<br><iframe src="https://www.youtube.com/embed/$2" allowfullscreen></iframe>');
+            msgText = msgText.replace(/(https:\/\/\S+)/g, '<a href="$1" target="_blank">$1</a>');
+            p.innerHTML = `[${time}] <strong>${msg.username}</strong>: ${msgText}`;
+          } else {
+            p.innerHTML = `<em>[${time}] ${msg.text}</em>`;
           }
 
+          const copyBtn = document.createElement("button");
+          copyBtn.textContent = "Copy";
+          copyBtn.className = "copy-btn";
+          copyBtn.onclick = () => {
+            navigator.clipboard.writeText(msg.text).then(() => {
+              copyBtn.textContent = "Copied!";
+              setTimeout(() => copyBtn.textContent = "Copy", 1500);
+            });
+          };
+          p.appendChild(copyBtn);
           chatBox.appendChild(p);
         });
 
@@ -279,15 +272,18 @@
         spacer.style.height = "60px";
         chatBox.appendChild(spacer);
 
+        const isNearBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight < 100;
+        if (isNearBottom) {
+          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
         if (lastMessageKey && latestKey !== lastMessageKey) {
           const sound = document.getElementById("ping-sound");
           const volume = parseFloat(document.getElementById("volume-slider").value);
           sound.volume = volume;
           sound.play();
         }
-
         lastMessageKey = latestKey;
-        chatBox.scrollTop = chatBox.scrollHeight;
       }
     });
   }
@@ -298,24 +294,26 @@
       if (!messages) return;
 
       const now = Date.now();
-      const keys = Object.keys(messages);
-      const keysToDelete = [];
-
-      keys.sort((a, b) => parseInt(a) - parseInt(b));
+      const keys = Object.keys(messages).sort();
+      const toDelete = [];
 
       for (let i = 0; i < keys.length; i++) {
         const msg = messages[keys[i]];
         const age = now - msg.timestamp;
         if (age > 12 * 60 * 60 * 1000 || keys.length - i > 300) {
-          keysToDelete.push(keys[i]);
+          toDelete.push(keys[i]);
         }
       }
 
-      keysToDelete.forEach((key) => {
+      toDelete.forEach((key) => {
         remove(ref(db, "messages/" + key));
       });
     });
   }
+
+  window.clearMessages = () => {
+    remove(messagesRef);
+  };
 </script>
 
 </body>
