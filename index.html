@@ -185,6 +185,14 @@
     document.getElementById("username-form").style.display = "none";
     document.getElementById("chat-box").style.display = "block";
     document.getElementById("chat-form").style.display = "flex";
+const timestamp = Date.now();
+const joinMessageRef = ref(db, "messages/" + timestamp);
+set(joinMessageRef, {
+  text: `${username} joined.`,
+  timestamp,
+  username: "", // empty username for join messages
+  isSystem: true
+});
 
     listenForMessages();
     cleanOldMessages();
