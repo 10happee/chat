@@ -27,44 +27,35 @@
       margin: 5px 0;
       white-space: pre-wrap;
       word-wrap: break-word;
-      transition: background-color 0.2s ease;
+    }
+
+    .message-container {
+      position: relative;
+      margin-bottom: 10px;
+    }
+
+    .message-container:hover {
+      background-color: rgba(255, 255, 255, 0.05);
       border-radius: 4px;
       padding: 2px 4px;
     }
 
-    #chat-box p:hover {
-      background-color: rgba(255, 255, 255, 0.05);
-    }
-
-    .copy-button {
+    .copy-btn {
       display: none;
-      margin-left: 10px;
-      font-size: 0.8rem;
-      padding: 2px 6px;
-      cursor: pointer;
-      background: #333;
-      border: none;
+      position: absolute;
+      right: 5px;
+      top: 5px;
+      background: #444;
       color: white;
-      border-radius: 4px;
-    }
-
-    #chat-box p:hover .copy-button {
-      display: inline-block;
-    }
-
-    iframe {
-      max-width: 100%;
-      width: 560px;
-      height: 315px;
       border: none;
-      margin-top: 5px;
-      display: block;
+      padding: 2px 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      border-radius: 4px;
     }
 
-    img {
-      max-width: 100%;
-      border-radius: 4px;
-      margin-top: 5px;
+    .message-container:hover .copy-btn {
+      display: inline;
     }
 
     #chat-form {
@@ -98,22 +89,38 @@
       cursor: pointer;
     }
 
-    #volume-slider {
+    #volume-slider,
+    #clear-button {
       position: fixed;
       top: 10px;
+    }
+
+    #volume-slider {
       right: 120px;
       width: 100px;
     }
 
     #clear-button {
-      position: fixed;
-      top: 10px;
       right: 10px;
     }
 
     a {
       color: #90cdf4;
       text-decoration: underline;
+    }
+
+    iframe {
+      max-width: 560px;
+      width: 100%;
+      height: 315px;
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin-top: 5px;
+      border-radius: 4px;
     }
   </style>
 </head>
@@ -127,7 +134,7 @@
 
 <div id="chat-box" style="display: none;"></div>
 
-<form id="chat-form" style="display: none;">
+<form id="chat-form">
   <textarea id="message-input" placeholder="Type your message..." rows="1"></textarea>
   <button type="button" onclick="sendMessage()">Send</button>
 </form>
@@ -145,7 +152,8 @@
     set,
     onValue,
     remove,
-    get
+    get,
+    push
   } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
   const firebaseConfig = {
@@ -155,29 +163,26 @@
     projectId: "happeechat",
     storageBucket: "happeechat.appspot.com",
     messagingSenderId: "851920750529",
-    appId: "1:851920750529:web:8e15bf1c0b685aa2c41140",
-    measurementId: "G-JTMNJS18XP"
+    appId: "1:851920750529:web:8e15bf1c0b685aa2c41140"
   };
 
   const app = initializeApp(firebaseConfig);
   const db = getDatabase(app);
   let username = "";
   let lastMessageKey = null;
-
   const chatBox = document.getElementById("chat-box");
   const messagesRef = ref(db, "messages");
+
+  function sanitizeText(text) {
+    const blacklist = ["badword", "anotherbadword"];
+    const pattern = new RegExp(blacklist.join("|"), "gi");
+    return text.replace(pattern, (match) => "*".repeat(match.length));
+  }
 
   function startChat() {
     const input = document.getElementById("username-input");
     username = input.value.trim() || "Anonymous";
     if (!username) return;
-
-    const joinMsg = {
-      text: `${username} joined.`,
-      timestamp: Date.now(),
-      username: null
-    };
-    set(ref(db, "messages/" + joinMsg.timestamp), joinMsg);
 
     document.getElementById("username-form").style.display = "none";
     document.getElementById("chat-box").style.display = "block";
@@ -185,6 +190,15 @@
 
     listenForMessages();
     cleanOldMessages();
+
+    const sanitizedName = sanitizeText(username);
+    const joinMsg = `[${sanitizedName} joined]`;
+    const timestamp = Date.now();
+    set(ref(db, "messages/" + timestamp), {
+      text: joinMsg,
+      timestamp,
+      isSystem: true
+    });
 
     const messageInput = document.getElementById("message-input");
     messageInput.addEventListener("keydown", (e) => {
@@ -199,38 +213,20 @@
 
   window.sendMessage = () => {
     const input = document.getElementById("message-input");
-    const text = input.value.trim();
-    if (text !== "") {
+    const rawText = input.value.trim();
+    if (rawText !== "") {
       const timestamp = Date.now();
       const messageRef = ref(db, "messages/" + timestamp);
+      const safeText = sanitizeText(rawText);
+      const safeUser = sanitizeText(username);
       set(messageRef, {
-        text,
+        text: safeText,
         timestamp,
-        username
+        username: safeUser
       });
       input.value = "";
     }
   };
-
-  function escapeHTML(str) {
-    return str.replace(/[&<>"']/g, (match) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;',
-      '"': '&quot;', "'": '&#039;'
-    })[match]);
-  }
-
-  function linkify(text) {
-    return text.replace(/(https:\/\/[^\s]+)/g, (url) => {
-      if (/\.(jpeg|jpg|gif|png|webp|bmp)$/i.test(url) || url.includes("googleusercontent")) {
-        return `<img src="${url}" alt="image" />`;
-      } else if (url.includes("youtube.com/watch") || url.includes("youtu.be")) {
-        let videoId = url.split("v=")[1] || url.split("/").pop();
-        if (videoId.includes("&")) videoId = videoId.split("&")[0];
-        return `<iframe src="https://www.youtube.com/embed/${videoId}" allowfullscreen></iframe>`;
-      }
-      return `<a href="${url}" target="_blank">${url}</a>`;
-    });
-  }
 
   function listenForMessages() {
     onValue(messagesRef, (snapshot) => {
@@ -241,37 +237,50 @@
         const latestKey = keys[keys.length - 1];
         keys.forEach((key) => {
           const msg = messages[key];
-          const p = document.createElement("p");
+          const container = document.createElement("div");
+          container.className = "message-container";
+
           const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-          let content = msg.username === null
-            ? `[${time}] ${escapeHTML(msg.text)}`
-            : `[${time}] <strong>${escapeHTML(msg.username)}</strong>: ${linkify(escapeHTML(msg.text))}`;
-
-          p.innerHTML = content;
-
-          if (msg.username !== null) {
-            const copyBtn = document.createElement("button");
-            copyBtn.textContent = "Copy";
-            copyBtn.className = "copy-button";
-            copyBtn.onclick = () => {
-              navigator.clipboard.writeText(`${msg.username}: ${msg.text}`);
-              copyBtn.textContent = "Copied!";
-              setTimeout(() => copyBtn.textContent = "Copy", 1500);
-            };
-            p.appendChild(copyBtn);
+          let html = "";
+          if (msg.isSystem) {
+            html = `<p>[${time}] ${msg.text}</p>`;
+          } else {
+            let textWithLinks = msg.text.replace(/(https:\/\/\S+)/g, url => {
+              if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) || url.includes("googleusercontent.com")) {
+                return `<a href="${url}" target="_blank">${url}</a><br><img src="${url}" alt="Image" />`;
+              } else if (url.includes("youtube.com/watch") || url.includes("youtu.be")) {
+                let videoId = url.split("v=")[1] || url.split("/").pop();
+                const ampIndex = videoId.indexOf("&");
+                if (ampIndex !== -1) videoId = videoId.substring(0, ampIndex);
+                return `<a href="${url}" target="_blank">${url}</a><br><iframe src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
+              }
+              return `<a href="${url}" target="_blank">${url}</a>`;
+            });
+            html = `<p>[${time}] <strong>${msg.username || "Unknown"}</strong>: ${textWithLinks}</p>`;
           }
 
-          chatBox.appendChild(p);
+          container.innerHTML = html;
+
+          const copyBtn = document.createElement("button");
+          copyBtn.className = "copy-btn";
+          copyBtn.textContent = "Copy";
+          copyBtn.onclick = () => {
+            navigator.clipboard.writeText(msg.text).then(() => {
+              copyBtn.textContent = "Copied!";
+              setTimeout(() => (copyBtn.textContent = "Copy"), 1500);
+            });
+          };
+
+          container.appendChild(copyBtn);
+          chatBox.appendChild(container);
         });
 
         const spacer = document.createElement("div");
         spacer.style.height = "60px";
         chatBox.appendChild(spacer);
 
-        if (chatBox.scrollHeight - chatBox.scrollTop <= chatBox.clientHeight + 100) {
-          chatBox.scrollTop = chatBox.scrollHeight;
-        }
+        chatBox.scrollTop = chatBox.scrollHeight;
 
         if (lastMessageKey && latestKey !== lastMessageKey) {
           const sound = document.getElementById("ping-sound");
@@ -290,23 +299,36 @@
       if (!messages) return;
 
       const now = Date.now();
-      const keys = Object.keys(messages).sort();
-      const toDelete = keys.filter((key, i) => {
-        const age = now - messages[key].timestamp;
-        return age > 12 * 60 * 60 * 1000 || keys.length - i > 300;
-      });
+      const keys = Object.keys(messages);
+      const keysToDelete = [];
 
-      toDelete.forEach((key) => {
+      keys.sort((a, b) => parseInt(a) - parseInt(b));
+
+      for (let i = 0; i < keys.length; i++) {
+        const msg = messages[keys[i]];
+        const age = now - msg.timestamp;
+        if (age > 12 * 60 * 60 * 1000 || keys.length - i > 300) {
+          keysToDelete.push(keys[i]);
+        }
+      }
+
+      keysToDelete.forEach((key) => {
         remove(ref(db, "messages/" + key));
       });
     });
   }
 
   window.clearMessages = () => {
-    if (confirm("Are you sure you want to clear all chat messages?")) {
-      remove(messagesRef);
-    }
+    get(messagesRef).then((snapshot) => {
+      const messages = snapshot.val();
+      if (messages) {
+        Object.keys(messages).forEach((key) => {
+          remove(ref(db, "messages/" + key));
+        });
+      }
+    });
   };
 </script>
+
 </body>
 </html>
