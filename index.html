@@ -27,6 +27,8 @@
       margin: 5px 0;
       white-space: pre-wrap;
       word-wrap: break-word;
+      position: relative;
+      padding-right: 40px;
     }
 
     #chat-box p:hover {
@@ -83,7 +85,14 @@
       border: none;
       cursor: pointer;
       font-size: 0.8rem;
-      margin-left: 10px;
+      position: absolute;
+      right: 10px;
+      top: 0;
+      display: none;
+    }
+
+    p:hover .copy-btn {
+      display: inline-block;
     }
 
     .copy-btn:hover {
