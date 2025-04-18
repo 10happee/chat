@@ -28,35 +28,35 @@
       white-space: pre-wrap;
       word-wrap: break-word;
       position: relative;
-      padding-right: 50px;
     }
 
     #chat-box p:hover {
       background-color: rgba(255, 255, 255, 0.05);
       transition: background-color 0.2s ease;
       border-radius: 4px;
+      padding: 2px 4px;
     }
 
-    .copy-button {
+    .copy-btn {
+      display: none;
       position: absolute;
-      right: 10px;
-      top: 50%;
-      transform: translateY(-50%);
-      background: #4f46e5;
+      right: 5px;
+      top: 5px;
+      background-color: #444;
       color: white;
       border: none;
-      border-radius: 4px;
-      padding: 4px 8px;
-      font-size: 12px;
+      padding: 2px 8px;
+      font-size: 0.8rem;
       cursor: pointer;
-      display: none;
+      border-radius: 4px;
     }
 
-    #chat-box p:hover .copy-button {
+    #chat-box p:hover .copy-btn {
       display: inline;
     }
 
     #chat-form {
+      display: none;
       position: fixed;
       bottom: 0;
       left: 0;
@@ -64,7 +64,7 @@
       background: rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(8px);
       padding: 10px;
-      display: none;
+      display: flex;
       gap: 10px;
       box-sizing: border-box;
     }
@@ -86,21 +86,28 @@
       cursor: pointer;
     }
 
-    #controls {
+    #volume-slider {
+      position: fixed;
+      top: 10px;
+      right: 120px;
+      width: 100px;
+    }
+
+    #clear-btn {
       position: fixed;
       top: 10px;
       right: 10px;
-      display: flex;
-      gap: 10px;
-    }
-
-    #volume-slider {
-      width: 100px;
     }
 
     a {
       color: #90cdf4;
       text-decoration: underline;
+    }
+
+    iframe, img {
+      max-width: 100%;
+      border-radius: 6px;
+      margin-top: 5px;
     }
   </style>
 </head>
@@ -112,22 +119,16 @@
   <button onclick="startChat()" style="margin-top: 1rem;">Start Chat</button>
 </div>
 
-<!-- Chat box -->
 <div id="chat-box" style="display: none;"></div>
 
-<!-- Chat input form -->
 <form id="chat-form">
   <textarea id="message-input" placeholder="Type your message..." rows="1"></textarea>
   <button type="button" onclick="sendMessage()">Send</button>
 </form>
 
-<!-- Controls -->
-<div id="controls">
-  <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" title="Ping Volume" />
-  <button onclick="clearAllMessages()">Clear</button>
-</div>
+<input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" title="Ping Volume" />
+<button id="clear-btn" onclick="clearMessages()">Clear</button>
 
-<!-- Sound -->
 <audio id="ping-sound" src="ping.mp3" preload="auto"></audio>
 
 <script type="module">
@@ -146,7 +147,7 @@
     authDomain: "happeechat.firebaseapp.com",
     databaseURL: "https://happeechat-default-rtdb.firebaseio.com",
     projectId: "happeechat",
-    storageBucket: "happeechat.appspot.com",
+    storageBucket: "happeechat.firebasestorage.app",
     messagingSenderId: "851920750529",
     appId: "1:851920750529:web:8e15bf1c0b685aa2c41140",
     measurementId: "G-JTMNJS18XP"
@@ -169,9 +170,15 @@
     document.getElementById("chat-box").style.display = "block";
     document.getElementById("chat-form").style.display = "flex";
 
-    sendSystemMessage(`${username} joined.`);
     listenForMessages();
     cleanOldMessages();
+
+    const joinRef = ref(db, "messages/" + Date.now());
+    set(joinRef, {
+      text: `${username} joined.`,
+      timestamp: Date.now(),
+      system: true
+    });
 
     const messageInput = document.getElementById("message-input");
     messageInput.addEventListener("keydown", (e) => {
@@ -187,26 +194,35 @@
   window.sendMessage = () => {
     const input = document.getElementById("message-input");
     const text = input.value.trim();
-    if (text === "") return;
-
-    const timestamp = Date.now();
-    set(ref(db, "messages/" + timestamp), {
-      text,
-      timestamp,
-      username,
-      isSystem: false
-    });
-
-    input.value = "";
+    if (text !== "") {
+      const timestamp = Date.now();
+      const messageRef = ref(db, "messages/" + timestamp);
+      set(messageRef, {
+        text,
+        timestamp,
+        username
+      });
+      input.value = "";
+    }
   };
 
-  function sendSystemMessage(text) {
-    const timestamp = Date.now();
-    set(ref(db, "messages/" + timestamp), {
-      text,
-      timestamp,
-      isSystem: true
+  window.clearMessages = () => {
+    remove(messagesRef);
+  };
+
+  function embedMedia(text) {
+    const safeText = text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const linkedText = safeText.replace(/(https:\/\/\S+)/g, (url) => {
+      if (url.match(/\.(jpeg|jpg|gif|png|webp|bmp)$/i) || url.includes("googleusercontent.com")) {
+        return `<a href="${url}" target="_blank">${url}</a><br><img src="${url}" alt="image" loading="lazy" />`;
+      } else if (url.includes("youtube.com/watch") || url.includes("youtu.be/")) {
+        let videoId = url.split("v=")[1] || url.split("/").pop();
+        if (videoId.includes("&")) videoId = videoId.split("&")[0];
+        return `<a href="${url}" target="_blank">${url}</a><br><iframe width="100%" height="200" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
+      }
+      return `<a href="${url}" target="_blank">${url}</a>`;
     });
+    return linkedText;
   }
 
   function listenForMessages() {
@@ -219,37 +235,24 @@
         keys.forEach((key) => {
           const msg = messages[key];
           const p = document.createElement("p");
+          const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-          if (msg.isSystem) {
-            p.innerHTML = msg.text;
-            p.style.fontStyle = "italic";
-            p.style.color = "#888";
-          } else {
-            const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            let msgText = msg.text || "";
-            msgText = msgText.replace(/(https:\/\/[^\s]+)/g, (url) => {
-              if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
-                return `<br><img src="${url}" alt="image" style="max-width: 300px; max-height: 300px;">`;
-              } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
-                const videoId = url.split("v=")[1]?.split("&")[0] || url.split("/").pop();
-                return `<br><iframe width="300" height="170" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
-              } else {
-                return `<a href="${url}" target="_blank">${url}</a>`;
-              }
-            });
+          const content = msg.system
+            ? `[${time}] ${msg.text}`
+            : `[${time}] ${msg.username || "Unknown"}: ${embedMedia(msg.text)}`;
 
-            p.innerHTML = `[${time}] <strong>${msg.username || "Unknown"}</strong>: ${msgText}`;
+          p.innerHTML = content;
 
-            const copyButton = document.createElement("button");
-            copyButton.className = "copy-button";
-            copyButton.textContent = "Copy";
-            copyButton.onclick = () => {
-              navigator.clipboard.writeText(msg.text).then(() => {
-                copyButton.textContent = "Copied!";
-                setTimeout(() => copyButton.textContent = "Copy", 2000);
-              });
+          if (!msg.system) {
+            const copyBtn = document.createElement("button");
+            copyBtn.className = "copy-btn";
+            copyBtn.textContent = "Copy";
+            copyBtn.onclick = () => {
+              navigator.clipboard.writeText(`${msg.username || "Unknown"}: ${msg.text}`);
+              copyBtn.textContent = "Copied!";
+              setTimeout(() => (copyBtn.textContent = "Copy"), 2000);
             };
-            p.appendChild(copyButton);
+            p.appendChild(copyBtn);
           }
 
           chatBox.appendChild(p);
@@ -258,7 +261,6 @@
         const spacer = document.createElement("div");
         spacer.style.height = "60px";
         chatBox.appendChild(spacer);
-        chatBox.scrollTop = chatBox.scrollHeight;
 
         if (lastMessageKey && latestKey !== lastMessageKey) {
           const sound = document.getElementById("ping-sound");
@@ -266,7 +268,9 @@
           sound.volume = volume;
           sound.play();
         }
+
         lastMessageKey = latestKey;
+        chatBox.scrollTop = chatBox.scrollHeight;
       }
     });
   }
@@ -295,12 +299,6 @@
       });
     });
   }
-
-  window.clearAllMessages = () => {
-    if (confirm("Are you sure you want to delete all chat messages?")) {
-      remove(ref(db, "messages"));
-    }
-  };
 </script>
 
 </body>
