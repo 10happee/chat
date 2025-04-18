@@ -28,16 +28,35 @@
       white-space: pre-wrap;
       word-wrap: break-word;
       position: relative;
-      padding-right: 60px; /* Reserve space for the copy button */
+      padding-right: 50px;
     }
 
     #chat-box p:hover {
       background-color: rgba(255, 255, 255, 0.05);
+      transition: background-color 0.2s ease;
       border-radius: 4px;
     }
 
-    #chat-form {
+    .copy-button {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #4f46e5;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
       display: none;
+    }
+
+    #chat-box p:hover .copy-button {
+      display: inline;
+    }
+
+    #chat-form {
       position: fixed;
       bottom: 0;
       left: 0;
@@ -45,7 +64,7 @@
       background: rgba(0, 0, 0, 0.5);
       backdrop-filter: blur(8px);
       padding: 10px;
-      display: flex;
+      display: none;
       gap: 10px;
       box-sizing: border-box;
     }
@@ -78,62 +97,48 @@
       color: #90cdf4;
       text-decoration: underline;
     }
-
-    .copy-button {
-      display: none;
-      position: absolute;
-      top: 50%;
-      right: 10px;
-      transform: translateY(-50%);
-      background-color: rgba(0, 0, 0, 0.6);
-      color: white;
-      padding: 5px 10px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-
-    #chat-box p:hover .copy-button {
-      display: block;
-    }
-
-    #username-form {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-    }
   </style>
 </head>
 <body>
 
-<div id="username-form">
-  <h2>Enter your username to start chatting</h2>
-  <input type="text" id="username-input" placeholder="Your username" />
-  <button onclick="startChat()">Start Chat</button>
+<div id="username-form" style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh;">
+  <h2 style="font-size: 1.5rem; margin-bottom: 1rem;">Enter your username to start chatting</h2>
+  <input type="text" id="username-input" placeholder="Your username" style="font-size: 1.2rem; padding: 10px 20px; width: 300px; max-width: 80%; border-radius: 8px; border: none; box-shadow: 0 0 10px rgba(0,0,0,0.1);" />
+  <button onclick="startChat()" style="margin-top: 1rem;">Start Chat</button>
 </div>
 
+<!-- Chat box -->
 <div id="chat-box" style="display: none;"></div>
 
+<!-- Chat input form -->
 <form id="chat-form">
   <textarea id="message-input" placeholder="Type your message..." rows="1"></textarea>
   <button type="button" onclick="sendMessage()">Send</button>
 </form>
 
+<!-- Volume Slider -->
 <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" title="Ping Volume" />
 
+<!-- Sound -->
 <audio id="ping-sound" src="ping.mp3" preload="auto"></audio>
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-  import { getDatabase, ref, set, onValue, remove, get, push } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+  import {
+    getDatabase,
+    ref,
+    set,
+    onValue,
+    remove,
+    get
+  } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDTQvxP6ERHw5e00BIFsEPy1R80Ma_6qfM",
     authDomain: "happeechat.firebaseapp.com",
     databaseURL: "https://happeechat-default-rtdb.firebaseio.com",
     projectId: "happeechat",
-    storageBucket: "happeechat.firebasestorage.app",
+    storageBucket: "happeechat.appspot.com",
     messagingSenderId: "851920750529",
     appId: "1:851920750529:web:8e15bf1c0b685aa2c41140",
     measurementId: "G-JTMNJS18XP"
@@ -157,7 +162,6 @@
     document.getElementById("chat-form").style.display = "flex";
 
     sendSystemMessage(`${username} joined.`);
-
     listenForMessages();
     cleanOldMessages();
 
@@ -170,6 +174,24 @@
     });
   }
 
+  window.startChat = startChat;
+
+  window.sendMessage = () => {
+    const input = document.getElementById("message-input");
+    const text = input.value.trim();
+    if (text === "") return;
+
+    const timestamp = Date.now();
+    set(ref(db, "messages/" + timestamp), {
+      text,
+      timestamp,
+      username,
+      isSystem: false
+    });
+
+    input.value = "";
+  };
+
   function sendSystemMessage(text) {
     const timestamp = Date.now();
     set(ref(db, "messages/" + timestamp), {
@@ -178,22 +200,6 @@
       isSystem: true
     });
   }
-
-  window.startChat = startChat;
-
-  window.sendMessage = () => {
-    const input = document.getElementById("message-input");
-    const text = input.value.trim();
-    if (text !== "") {
-      const timestamp = Date.now();
-      set(ref(db, "messages/" + timestamp), {
-        text,
-        timestamp,
-        username
-      });
-      input.value = "";
-    }
-  };
 
   function listenForMessages() {
     onValue(messagesRef, (snapshot) => {
@@ -205,28 +211,34 @@
         keys.forEach((key) => {
           const msg = messages[key];
           const p = document.createElement("p");
-          const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-          const msgText = msg.text.replace(/(https:\/\/\S+)/g, '<a href="$1" target="_blank">$1</a>');
 
           if (msg.isSystem) {
-            p.innerHTML = `${msg.text}`;
+            p.innerHTML = msg.text;
             p.style.fontStyle = "italic";
             p.style.color = "#888";
           } else {
-            p.innerHTML = `[${time}] <strong>${msg.username || "Unknown"}</strong>: ${msgText}`;
-          }
+            const time = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            let msgText = msg.text || "";
+            msgText = msgText.replace(/(https:\/\/[^\s]+)/g, (url) => {
+              if (url.match(/\.(jpeg|jpg|gif|png|webp)$/i)) {
+                return `<br><img src="${url}" alt="image" style="max-width: 300px; max-height: 300px;">`;
+              } else if (url.includes("youtube.com") || url.includes("youtu.be")) {
+                const videoId = url.split("v=")[1]?.split("&")[0] || url.split("/").pop();
+                return `<br><iframe width="300" height="170" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allowfullscreen></iframe>`;
+              } else {
+                return `<a href="${url}" target="_blank">${url}</a>`;
+              }
+            });
 
-          // Copy Button
-          if (!msg.isSystem) {
+            p.innerHTML = `[${time}] <strong>${msg.username || "Unknown"}</strong>: ${msgText}`;
+
             const copyButton = document.createElement("button");
             copyButton.className = "copy-button";
             copyButton.textContent = "Copy";
             copyButton.onclick = () => {
               navigator.clipboard.writeText(msg.text).then(() => {
                 copyButton.textContent = "Copied!";
-                setTimeout(() => {
-                  copyButton.textContent = "Copy";
-                }, 2000);
+                setTimeout(() => copyButton.textContent = "Copy", 2000);
               });
             };
             p.appendChild(copyButton);
@@ -238,12 +250,12 @@
         const spacer = document.createElement("div");
         spacer.style.height = "60px";
         chatBox.appendChild(spacer);
-
         chatBox.scrollTop = chatBox.scrollHeight;
 
         if (lastMessageKey && latestKey !== lastMessageKey) {
           const sound = document.getElementById("ping-sound");
-          sound.volume = parseFloat(document.getElementById("volume-slider").value);
+          const volume = parseFloat(document.getElementById("volume-slider").value);
+          sound.volume = volume;
           sound.play();
         }
         lastMessageKey = latestKey;
