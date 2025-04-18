@@ -86,10 +86,15 @@
       cursor: pointer;
     }
 
-    #volume-slider {
+    #controls {
       position: fixed;
       top: 10px;
       right: 10px;
+      display: flex;
+      gap: 10px;
+    }
+
+    #volume-slider {
       width: 100px;
     }
 
@@ -116,8 +121,11 @@
   <button type="button" onclick="sendMessage()">Send</button>
 </form>
 
-<!-- Volume Slider -->
-<input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" title="Ping Volume" />
+<!-- Controls -->
+<div id="controls">
+  <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" title="Ping Volume" />
+  <button onclick="clearAllMessages()">Clear</button>
+</div>
 
 <!-- Sound -->
 <audio id="ping-sound" src="ping.mp3" preload="auto"></audio>
@@ -287,6 +295,12 @@
       });
     });
   }
+
+  window.clearAllMessages = () => {
+    if (confirm("Are you sure you want to delete all chat messages?")) {
+      remove(ref(db, "messages"));
+    }
+  };
 </script>
 
 </body>
